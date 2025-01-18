@@ -699,10 +699,11 @@ app.get("/api/exams", async (req, res) => {
 
 
 // Add this new API endpoint to your existing Express app
+// Modified API endpoint
 app.get("/api/today-exam-results", async (req, res) => {
   try {
     const today = moment().format('YYYY-MM-DD');
-    
+
     // Step 1: Get today's exam from Firestore
     const examsSnapshot = await firestore.collection('Exams').get();
     let todayExam = null;
@@ -716,7 +717,7 @@ app.get("/api/today-exam-results", async (req, res) => {
           id: doc.id,
           ...examData.dateTime
         };
-        
+
         // Get questions for this exam
         const questionsSnapshot = await doc.ref.collection('Questions').orderBy('order').get();
         examQuestions = questionsSnapshot.docs.map(qDoc => ({
@@ -740,11 +741,11 @@ app.get("/api/today-exam-results", async (req, res) => {
       .get();
 
     const results = [];
-    
+
     // Step 3: Process each candidate's answers
     for (const candidateDoc of candidatesSnapshot.docs) {
       const candidateData = candidateDoc.data();
-      
+
       // Get candidate's answers
       const answersSnapshot = await candidateDoc.ref.collection('answers').get();
       const answers = answersSnapshot.docs.map(aDoc => ({
@@ -755,10 +756,10 @@ app.get("/api/today-exam-results", async (req, res) => {
       // Calculate results
       let correctAnswers = 0;
       let skippedQuestions = 0;
-      
+
       examQuestions.forEach(question => {
         const candidateAnswer = answers.find(a => a.order === question.order);
-        
+
         if (!candidateAnswer || candidateAnswer.skipped) {
           skippedQuestions++;
         } else if (candidateAnswer.answer === question.correctAnswer) {
@@ -766,7 +767,11 @@ app.get("/api/today-exam-results", async (req, res) => {
         }
       });
 
-      // Prepare result object
+      // Get submitted and used status from candidate data
+      const submitted = candidateData.submitted || false;
+      const used = candidateData.used || false;
+
+      // Prepare result object with status flags
       const resultData = {
         registrationNumber: candidateDoc.id,
         candidateName: candidateData.candidateName,
@@ -774,7 +779,9 @@ app.get("/api/today-exam-results", async (req, res) => {
         totalQuestions: examQuestions.length,
         correctAnswers,
         skippedQuestions,
-        wrongAnswers: examQuestions.length - (correctAnswers + skippedQuestions)
+        wrongAnswers: examQuestions.length - (correctAnswers + skippedQuestions),
+        submitted,
+        used
       };
 
       results.push(resultData);
