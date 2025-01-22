@@ -908,6 +908,102 @@ app.delete("/api/candidates", async (req, res) => {
 });
 
 
+//Apis see details of winners
+app.get('/api/winners', async (req, res) => {
+  try {
+    // Reference to Winners collection
+    const winnersRef = realtimeDatabase.ref('Winners');
+    
+    // Get all data from Winners node
+    const snapshot = await winnersRef.once('value');
+    const winnersData = snapshot.val();
+    
+    // If no data exists
+    if (!winnersData) {
+      return res.status(404).json({
+        success: false,
+        error: 'No winners data found'
+      });
+    }
+    
+    // Transform data into a more organized structure
+    const formattedData = {};
+    
+    // Iterate through exam titles
+    Object.entries(winnersData).forEach(([examTitle, examData]) => {
+      formattedData[examTitle] = [];
+      
+      // Iterate through registrations under each exam
+      Object.entries(examData).forEach(([regNumber, winnerDetails]) => {
+        formattedData[examTitle].push({
+          registrationNumber: regNumber,
+          ...winnerDetails
+        });
+      });
+      
+      // Sort winners by rank for each exam
+      formattedData[examTitle].sort((a, b) => a.rank - b.rank);
+    });
+    
+    // Prepare response
+    const response = {
+      success: true,
+      data: {
+        message: 'Winners data retrieved successfully',
+        winners: formattedData
+      }
+    };
+    
+    res.status(200).json(response);
+    
+  } catch (error) {
+    console.error('Error retrieving winners data:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve winners data',
+      details: error.message
+    });
+  }
+});
+
+app.put('/api/winners/status', async (req, res) => {
+  try {
+    const { examTitle, registrationNumber, status } = req.body;
+
+    // Validate required fields
+    if (!examTitle || !registrationNumber || !status) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    // Reference to specific winner's status
+    const winnerRef = realtimeDatabase.ref(`Winners/${examTitle}/${registrationNumber}`);
+
+    // Update the status
+    await winnerRef.update({ status });
+
+    // Return success response
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'Winner status updated successfully'
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating winner status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update winner status',
+      details: error.message
+    });
+  }
+});
+
+
+
 // Start the server
 app.listen(port, () => {
     console.log(`Server started on port ${port}`);
