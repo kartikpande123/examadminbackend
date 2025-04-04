@@ -1690,29 +1690,37 @@ app.get("/api/practice-tests/:category/:examId/date-time", async (req, res) => {
 
 //Api Students who purchased exams
 // GET API to fetch all students data
-app.get("/get-all-students", async (req, res) => {
-  // Add CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-
-  // Handle OPTIONS request (preflight request)
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-
-  try {
-    const studentsRef = admin.database().ref("practicetestpurchasedstudents");
-    const snapshot = await studentsRef.once("value");
-
-    if (!snapshot.exists()) {
-      return res.status(404).json({ message: "No students found" });
+app.get('/api/practicetestpurchasedstudents', async (req, res) => {
+  try {  
+    // Create a reference to the collection
+    const ref = realtimeDatabase.ref('practicetestpurchasedstudents');
+    
+    // Get all data from the reference
+    const snapshot = await ref.once('value');
+    
+    // Convert the snapshot to JSON
+    const data = snapshot.val();
+    
+    // If no data is found, return a 404
+    if (!data) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No data found' 
+      });
     }
-
-    return res.status(200).json(snapshot.val());
+    
+    // Return the data
+    return res.status(200).json({
+      success: true,
+      data: data
+    });
   } catch (error) {
-    console.error("Error fetching data:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error('Error retrieving data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error retrieving data from database',
+      error: error.message
+    });
   }
 });
 
@@ -2131,30 +2139,10 @@ app.delete("/api/pdf-syllabi/:category/:title", async (req, res) => {
 //Api for pdf syllabus purchasers
 
 // API to get all PDF syllabus purchasers
-app.get('/get-pdf-syllabus-purchasers', async (req, res) => {
+app.get('/api/pdfsyllabuspurchasers', async (req, res) => {
   try {
-    // Get data from Firebase Realtime Database
-    const purchasersRef = realtimeDatabase.ref('pdfsyllabuspurchasers');
-    const snapshot = await purchasersRef.once('value');
-    const purchasersData = snapshot.val();
-    
-    if (!purchasersData) {
-      return res.status(200).json({});
-    }
-
-    return res.status(200).json(purchasersData);
-  } catch (error) {
-    console.error('Error fetching PDF syllabus purchasers:', error);
-    return res.status(500).json({ error: 'Failed to fetch PDF syllabus purchasers' });
-  }
-});
-
-
-
-app.get('/api/practicetestpurchasedstudents', async (req, res) => {
-  try {  
     // Create a reference to the collection
-    const ref = realtimeDatabase.ref('practicetestpurchasedstudents');
+    const ref = realtimeDatabase.ref('pdfsyllabuspurchasers');
     
     // Get all data from the reference
     const snapshot = await ref.once('value');
@@ -2164,9 +2152,9 @@ app.get('/api/practicetestpurchasedstudents', async (req, res) => {
     
     // If no data is found, return a 404
     if (!data) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'No data found' 
+      return res.status(404).json({
+        success: false,
+        message: 'No data found'
       });
     }
     
@@ -2184,6 +2172,10 @@ app.get('/api/practicetestpurchasedstudents', async (req, res) => {
     });
   }
 });
+
+
+
+
 
 
 
