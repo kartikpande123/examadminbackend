@@ -1690,27 +1690,28 @@ app.get("/api/practice-tests/:category/:examId/date-time", async (req, res) => {
 //Api Students who purchased exams
 // GET API to fetch all students data
 app.get("/get-all-students", async (req, res) => {
+  // Add CORS headers directly to this specific endpoint
+  res.header("Access-Control-Allow-Origin", "*"); // Allow requests from any origin
+  res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  
+  // Handle OPTIONS request for preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).send();
+  }
+  
   try {
     const studentsRef = realtimeDatabase.ref("practicetestpurchasedstudents");
     const snapshot = await studentsRef.once("value");
-
+    
     if (!snapshot.exists()) {
       return res.status(404).json({ message: "No students found" });
     }
-
-    // Explicitly set success headers
-    res.set({
-      'Access-Control-Allow-Origin': 'http://localhost:3000',
-      'Vary': 'Origin'
-    });
-
+    
     return res.status(200).json(snapshot.val());
   } catch (error) {
-    console.error("Error:", error);
-    return res.status(500).json({ 
-      error: "Internal Error",
-      details: error.message 
-    });
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
