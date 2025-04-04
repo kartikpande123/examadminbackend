@@ -12,15 +12,7 @@ const port = 5555;
 
 // Middleware
 app.use(express.json());
-// Configure CORS with specific origins
-app.use(cors({
-  origin: [
-    'http://localhost:3000', // Your development frontend
-    'https://ayanexamadmin.in' // Your production frontend
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(cors());
 
 // Multer setup for image upload
 const upload = multer({
@@ -1695,7 +1687,8 @@ app.get("/api/practice-tests/:category/:examId/date-time", async (req, res) => {
 });
 
 
-//Api Students who purchased exams// Your existing route
+//Api Students who purchased exams
+// GET API to fetch all students data
 app.get("/get-all-students", async (req, res) => {
   try {
     const studentsRef = realtimeDatabase.ref("practicetestpurchasedstudents");
@@ -1705,10 +1698,19 @@ app.get("/get-all-students", async (req, res) => {
       return res.status(404).json({ message: "No students found" });
     }
 
+    // Explicitly set success headers
+    res.set({
+      'Access-Control-Allow-Origin': 'http://localhost:3000',
+      'Vary': 'Origin'
+    });
+
     return res.status(200).json(snapshot.val());
   } catch (error) {
-    console.error("Error fetching data:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("Error:", error);
+    return res.status(500).json({ 
+      error: "Internal Error",
+      details: error.message 
+    });
   }
 });
 
