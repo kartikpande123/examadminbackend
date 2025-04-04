@@ -13,11 +13,7 @@ const port = 5555;
 // Middleware
 app.use(express.json());
 app.use(cors());
-app.use(cors({ 
-  origin: "*",  // Allow all origins (You can restrict to specific domains)
-  methods: ["GET", "POST", "OPTIONS"], 
-  allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"]
-}));
+
 
 // Multer setup for image upload
 const upload = multer({
@@ -1695,30 +1691,31 @@ app.get("/api/practice-tests/:category/:examId/date-time", async (req, res) => {
 //Api Students who purchased exams
 // GET API to fetch all students data
 app.get("/get-all-students", async (req, res) => {
-  // Add CORS headers directly to this specific endpoint
-  res.header("Access-Control-Allow-Origin", "*"); // Allow requests from any origin
-  res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-  
-  // Handle OPTIONS request for preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).send();
+  // Add CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+
+  // Handle OPTIONS request (preflight request)
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
   }
-  
+
   try {
-    const studentsRef = realtimeDatabase.ref("practicetestpurchasedstudents");
+    const studentsRef = admin.database().ref("practicetestpurchasedstudents");
     const snapshot = await studentsRef.once("value");
-    
+
     if (!snapshot.exists()) {
       return res.status(404).json({ message: "No students found" });
     }
-    
+
     return res.status(200).json(snapshot.val());
   } catch (error) {
     console.error("Error fetching data:", error);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
 
 
 
