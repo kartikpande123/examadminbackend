@@ -2151,6 +2151,42 @@ app.get('/get-pdf-syllabus-purchasers', async (req, res) => {
 
 
 
+app.get('/api/practicetestpurchasedstudents', async (req, res) => {
+  try {  
+    // Create a reference to the collection
+    const ref = realtimeDatabase.ref('practicetestpurchasedstudents');
+    
+    // Get all data from the reference
+    const snapshot = await ref.once('value');
+    
+    // Convert the snapshot to JSON
+    const data = snapshot.val();
+    
+    // If no data is found, return a 404
+    if (!data) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'No data found' 
+      });
+    }
+    
+    // Return the data
+    return res.status(200).json({
+      success: true,
+      data: data
+    });
+  } catch (error) {
+    console.error('Error retrieving data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error retrieving data from database',
+      error: error.message
+    });
+  }
+});
+
+
+
 
 // Start the server
 app.listen(port, () => {
