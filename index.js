@@ -13,6 +13,11 @@ const port = 5555;
 // Middleware
 app.use(express.json());
 app.use(cors());
+app.use(cors({ 
+  origin: "*",  // Allow all origins (You can restrict to specific domains)
+  methods: ["GET", "POST", "OPTIONS"], 
+  allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"]
+}));
 
 // Multer setup for image upload
 const upload = multer({
