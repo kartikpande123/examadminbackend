@@ -1690,31 +1690,21 @@ app.get("/api/practice-tests/:category/:examId/date-time", async (req, res) => {
 //Api Students who purchased exams
 // GET API to fetch all students data
 app.get("/get-all-students", async (req, res) => {
-  // Add comprehensive CORS headers
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-  res.header("Access-Control-Allow-Credentials", "true");
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  
   try {
-    const studentsRef = realtimeDatabase.ref("practicetestpurchasedstudents");
-    const snapshot = await studentsRef.once("value");
-    
+    const studentsRef = realtimeDatabase.ref("practicetestpurchasedstudents"); // Collection reference
+    const snapshot = await studentsRef.once("value"); // Fetch all data
+
     if (!snapshot.exists()) {
       return res.status(404).json({ message: "No students found" });
     }
-    
-    return res.status(200).json(snapshot.val());
+
+    return res.status(200).json(snapshot.val()); // Return all student data
   } catch (error) {
     console.error("Error fetching data:", error);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
 
 
 //Pdf syallbus realted apis
