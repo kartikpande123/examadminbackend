@@ -3,6 +3,8 @@ const cors = require("cors");
 const multer = require("multer");
 const admin = require("./db/firebaseConfig").firebaseAdmin;
 const moment = require("moment")
+const { v4: uuidv4 } = require('uuid');
+const sharp = require('sharp');
 
 // Initialize Express app
 const app = express();
@@ -18,9 +20,25 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 }, // Limit: 5 MB
 });
 
+
+// Multer setup for file uploads
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // Limit: 10 MB
+  fileFilter: (req, file, cb) => {
+    // Accept only PDF files
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'));
+    }
+  }
+});
+
 // Firestore setup
 const firestore = admin.firestore();
 const realtimeDatabase = admin.database();
+const bucket = admin.storage().bucket();
 
 
 app.get("/", (req, res) => {
@@ -1001,6 +1019,1124 @@ app.put('/api/winners/status', async (req, res) => {
     });
   }
 });
+
+
+
+
+
+//Practice Test Apis down
+
+
+//Practice Categry
+
+// Reference to categories in realtime database
+const categoriesRef = realtimeDatabase.ref('Practicecategories');
+
+// category apis
+// Create category
+app.post("/api/categories", async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: "Category name is required" });
+    }
+
+    const newCategoryRef = categoriesRef.push();
+    await newCategoryRef.set({
+      name,
+      createdAt: admin.database.ServerValue.TIMESTAMP
+    });
+
+    res.status(201).json({
+      id: newCategoryRef.key,
+      name
+    });
+  } catch (error) {
+    console.error("Error creating category:", error);
+    res.status(500).json({ error: "Failed to create category" });
+  }
+});
+
+// Get all categories
+app.get("/api/categories", async (req, res) => {
+  try {
+    const snapshot = await categoriesRef.once('value');
+    const categories = [];
+    
+    snapshot.forEach((childSnapshot) => {
+      categories.push({
+        id: childSnapshot.key,
+        ...childSnapshot.val()
+      });
+    });
+
+    res.json(categories);
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    res.status(500).json({ error: "Failed to fetch categories" });
+  }
+});
+
+
+// Update category
+app.put("/api/categories/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: "Category name is required" });
+    }
+
+    const categoryRef = categoriesRef.child(id);
+    await categoryRef.update({
+      name,
+      updatedAt: admin.database.ServerValue.TIMESTAMP
+    });
+
+    res.json({ id, name });
+  } catch (error) {
+    console.error("Error updating category:", error);
+    res.status(500).json({ error: "Failed to update category" });
+  }
+});
+
+// Delete category
+app.delete("/api/categories/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await categoriesRef.child(id).remove();
+    res.json({ message: "Category deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting category:", error);
+    res.status(500).json({ error: "Failed to delete category" });
+  }
+});
+
+
+
+//Apis for preatice test detsils
+
+const practiceTestsRef = realtimeDatabase.ref('PracticeTests');
+
+app.post("/api/practice-tests", async (req, res) => {
+  try {
+    const { category, title, fees, duration, timeLimit } = req.body;
+
+    if (!category || !title) {
+      return res.status(400).json({ error: "Category and Title are required" });
+    }
+
+    const newTestRef = practiceTestsRef.child(category).child(title);
+
+    await newTestRef.set({
+      fees: fees || 0,
+      duration: duration || "N/A",
+      timeLimit: timeLimit || "N/A",
+      createdAt: admin.database.ServerValue.TIMESTAMP
+    });
+
+    res.status(201).json({
+      message: "Practice test added successfully",
+      category,
+      title,
+      fees,
+      duration,
+      timeLimit
+    });
+  } catch (error) {
+    console.error("Error adding practice test:", error);
+    res.status(500).json({ error: "Failed to add practice test" });
+  }
+});
+
+
+app.get("/api/practice-tests", async (req, res) => {
+  try {
+    const snapshot = await practiceTestsRef.once('value');
+    const practiceTests = {};
+
+    snapshot.forEach((categorySnapshot) => {
+      const category = categorySnapshot.key;
+      practiceTests[category] = {};
+
+      categorySnapshot.forEach((titleSnapshot) => {
+        practiceTests[category][titleSnapshot.key] = titleSnapshot.val();
+      });
+    });
+
+    res.json(practiceTests);
+  } catch (error) {
+    console.error("Error fetching practice tests:", error);
+    res.status(500).json({ error: "Failed to fetch practice tests" });
+  }
+});
+
+
+app.get("/api/practice-tests/:category", async (req, res) => {
+  try {
+    const { category } = req.params;
+    const categoryRef = practiceTestsRef.child(category);
+
+    const snapshot = await categoryRef.once('value');
+
+    if (!snapshot.exists()) {
+      return res.status(404).json({ error: "Category not found" });
+    }
+
+    res.json(snapshot.val());
+  } catch (error) {
+    console.error("Error fetching category practice tests:", error);
+    res.status(500).json({ error: "Failed to fetch category practice tests" });
+  }
+});
+
+
+app.delete("/api/practice-tests/:category/:title", async (req, res) => {
+  try {
+    const { category, title } = req.params;
+    const testRef = practiceTestsRef.child(category).child(title);
+
+    const snapshot = await testRef.once('value');
+    if (!snapshot.exists()) {
+      return res.status(404).json({ error: "Practice test not found" });
+    }
+
+    await testRef.remove();
+
+    res.json({ message: "Practice test deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting practice test:", error);
+    res.status(500).json({ error: "Failed to delete practice test" });
+  }
+});
+
+
+
+//Practice Questions api 
+
+// API to add a question to a specific practice test
+app.post("/api/practice-tests/:category/:examId/questions", upload.single("image"), async (req, res) => {
+  const { category, examId } = req.params;
+  const { question, options, correctAnswer, compressImage } = req.body;
+  const image = req.file;
+
+  try {
+    // Validate input
+    if (!category || !examId || !question || !options || correctAnswer === undefined) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Parse options and correct answer
+    const parsedOptions = JSON.parse(options);
+    const parsedCorrectAnswer = parseInt(correctAnswer, 10);
+
+    if (!Array.isArray(parsedOptions) || parsedOptions.length !== 4 || isNaN(parsedCorrectAnswer)) {
+      return res.status(400).json({ error: "Invalid options or correct answer" });
+    }
+
+    // Firestore references
+    const examDocRef = firestore.collection("PracticeTests").doc(category).collection("Exams").doc(examId);
+    const questionsCollection = examDocRef.collection("Questions");
+
+    // Get the current count of questions to determine the new order
+    const allQuestionsSnapshot = await questionsCollection.get();
+    const nextOrder = allQuestionsSnapshot.size + 1;
+
+    // Prepare question data with order field
+    const questionData = {
+      question,
+      options: parsedOptions,
+      correctAnswer: parsedCorrectAnswer,
+      order: nextOrder,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // Handle image upload to Firebase Storage if present
+    if (image) {
+      const fileExtension = image.originalname.split('.').pop();
+      const fileName = `practice-tests/${category}/${examId}/questions/${uuidv4()}.${fileExtension}`;
+      const file = bucket.file(fileName);
+
+      let imageBuffer = image.buffer;
+      
+      // Apply compression if requested and it's a JPEG or PNG
+      if (compressImage === "true" && ['jpg', 'jpeg', 'png'].includes(fileExtension.toLowerCase())) {
+        try {
+          // Optimize image - reduce size while maintaining quality
+          imageBuffer = await sharp(image.buffer)
+            .resize({ 
+              width: 1200, // max width
+              height: 1200, // max height
+              fit: 'inside',
+              withoutEnlargement: true 
+            })
+            .jpeg({ quality: 80 }) // For JPEGs, adjust quality
+            .toBuffer();
+        } catch (err) {
+          console.warn("Image optimization failed, using original:", err);
+          // Fall back to original image if optimization fails
+          imageBuffer = image.buffer;
+        }
+      }
+
+      // Create a write stream with better settings
+      const stream = file.createWriteStream({
+        metadata: {
+          contentType: image.mimetype,
+          cacheControl: 'public, max-age=31536000', // Cache for 1 year
+        },
+        resumable: false, // Disable resumable uploads for small files to speed up process
+      });
+
+      // Upload and save to Firestore concurrently
+      let imageUrl = null;
+      
+      // Handle stream errors
+      const uploadPromise = new Promise((resolve, reject) => {
+        stream.on("error", (error) => {
+          console.error("Upload error:", error);
+          reject(error);
+        });
+
+        stream.on("finish", async () => {
+          // Make the file publicly accessible
+          await file.makePublic();
+
+          // Get the public URL
+          imageUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+          resolve();
+        });
+
+        // Write the file buffer to storage
+        stream.end(imageBuffer);
+      });
+
+      try {
+        await uploadPromise;
+        
+        // Add image URL to question data
+        if (imageUrl) {
+          questionData.imageUrl = imageUrl;
+        }
+        
+        // Add question to Firestore
+        const questionDoc = await questionsCollection.add(questionData);
+        
+        return res.status(200).json({
+          message: "Question added successfully",
+          questionId: questionDoc.id,
+          order: nextOrder,
+          imageUrl
+        });
+      } catch (error) {
+        console.error("Error in upload or save:", error);
+        return res.status(500).json({ error: "Failed to save question data" });
+      }
+    } else {
+      // Add question to Firestore without image
+      const questionDoc = await questionsCollection.add(questionData);
+
+      return res.status(200).json({
+        message: "Question added successfully",
+        questionId: questionDoc.id,
+        order: nextOrder
+      });
+    }
+  } catch (error) {
+    console.error("Error saving question:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// API to update a question
+app.put("/api/practice-tests/:category/:examId/questions/:questionId", upload.single("image"), async (req, res) => {
+  const { category, examId, questionId } = req.params;
+  const { question, options, correctAnswer, compressImage } = req.body;
+  const image = req.file;
+
+  try {
+    // Validate input
+    if (!category || !examId || !questionId || !question || !options || correctAnswer === undefined) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Parse options and correct answer
+    const parsedOptions = JSON.parse(options);
+    const parsedCorrectAnswer = parseInt(correctAnswer, 10);
+
+    if (!Array.isArray(parsedOptions) || parsedOptions.length !== 4 || isNaN(parsedCorrectAnswer)) {
+      return res.status(400).json({ error: "Invalid options or correct answer" });
+    }
+
+    // Firestore references
+    const questionDocRef = firestore.collection("PracticeTests").doc(category)
+      .collection("Exams").doc(examId)
+      .collection("Questions").doc(questionId);
+
+    // Get the current question data
+    const questionSnapshot = await questionDocRef.get();
+    if (!questionSnapshot.exists) {
+      return res.status(404).json({ error: "Question not found" });
+    }
+
+    const currentData = questionSnapshot.data();
+
+    // Prepare update data
+    const updateData = {
+      question,
+      options: parsedOptions,
+      correctAnswer: parsedCorrectAnswer,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // Handle image upload if a new image is provided
+    if (image) {
+      // Prepare for deleting the old image if it exists
+      let deletePromise = Promise.resolve();
+      if (currentData.imageUrl) {
+        try {
+          const oldImagePath = decodeURIComponent(currentData.imageUrl.split('/').slice(4).join('/'));
+          deletePromise = bucket.file(oldImagePath).delete().catch(err => {
+            console.warn("Error deleting old image, continuing:", err);
+            // Continue even if deletion fails
+          });
+        } catch (error) {
+          console.warn("Error parsing old image path:", error);
+          // Continue even if path parsing fails
+        }
+      }
+
+      // Process new image while old one is being deleted
+      const fileExtension = image.originalname.split('.').pop();
+      const fileName = `practice-tests/${category}/${examId}/questions/${uuidv4()}.${fileExtension}`;
+      const file = bucket.file(fileName);
+
+      let imageBuffer = image.buffer;
+      
+      // Apply compression if requested and it's a JPEG or PNG
+      if (compressImage === "true" && ['jpg', 'jpeg', 'png'].includes(fileExtension.toLowerCase())) {
+        try {
+          imageBuffer = await sharp(image.buffer)
+            .resize({ 
+              width: 1200,
+              height: 1200,
+              fit: 'inside',
+              withoutEnlargement: true 
+            })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+        } catch (err) {
+          console.warn("Image optimization failed, using original:", err);
+          imageBuffer = image.buffer;
+        }
+      }
+
+      // Create a write stream with better settings
+      const stream = file.createWriteStream({
+        metadata: {
+          contentType: image.mimetype,
+          cacheControl: 'public, max-age=31536000',
+        },
+        resumable: false,
+      });
+
+      // Upload image and handle both promises
+      let imageUrl = null;
+      
+      const uploadPromise = new Promise((resolve, reject) => {
+        stream.on("error", (error) => {
+          console.error("Upload error:", error);
+          reject(error);
+        });
+
+        stream.on("finish", async () => {
+          // Make the file publicly accessible
+          await file.makePublic();
+
+          // Get the public URL
+          imageUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+          resolve();
+        });
+
+        // Write the file buffer to storage
+        stream.end(imageBuffer);
+      });
+
+      try {
+        // Wait for both deletion and upload to complete
+        await Promise.all([deletePromise, uploadPromise]);
+        
+        // Add image URL to update data
+        if (imageUrl) {
+          updateData.imageUrl = imageUrl;
+        }
+        
+        // Update question in Firestore
+        await questionDocRef.update(updateData);
+        
+        return res.status(200).json({
+          message: "Question updated successfully",
+          imageUrl
+        });
+      } catch (error) {
+        console.error("Error in upload or update:", error);
+        return res.status(500).json({ error: "Failed to update question data" });
+      }
+    } else {
+      // Update question without changing the image
+      await questionDocRef.update(updateData);
+
+      return res.status(200).json({
+        message: "Question updated successfully"
+      });
+    }
+  } catch (error) {
+    console.error("Error updating question:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// API to delete a question
+app.delete("/api/practice-tests/:category/:examId/questions/:questionId", async (req, res) => {
+  const { category, examId, questionId } = req.params;
+
+  try {
+    // Firestore references
+    const questionDocRef = firestore.collection("PracticeTests").doc(category)
+      .collection("Exams").doc(examId)
+      .collection("Questions").doc(questionId);
+
+    // Get the question data to check for image
+    const questionSnapshot = await questionDocRef.get();
+    if (!questionSnapshot.exists) {
+      return res.status(404).json({ error: "Question not found" });
+    }
+
+    const questionData = questionSnapshot.data();
+
+    // Delete image from Storage if it exists
+    if (questionData.imageUrl) {
+      try {
+        const imagePath = decodeURIComponent(questionData.imageUrl.split('/').slice(4).join('/'));
+        await bucket.file(imagePath).delete();
+      } catch (deleteError) {
+        console.warn("Error deleting image:", deleteError);
+        // Continue with deletion even if image deletion fails
+      }
+    }
+
+    // Delete the question document
+    await questionDocRef.delete();
+
+    // Return success response
+    res.status(200).json({ message: "Question deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting question:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// API to get all questions for a specific exam
+app.get("/api/practice-tests/:category/:examId/questions", async (req, res) => {
+  const { category, examId } = req.params;
+
+  try {
+    // Firestore references
+    const questionsCollection = firestore.collection("PracticeTests").doc(category)
+      .collection("Exams").doc(examId)
+      .collection("Questions");
+
+    // Get all questions ordered by the 'order' field
+    const questionsSnapshot = await questionsCollection.orderBy("order", "asc").get();
+
+    if (questionsSnapshot.empty) {
+      return res.status(200).json({ questions: [] });
+    }
+
+    // Transform the snapshot to an array of questions
+    const questions = [];
+    questionsSnapshot.forEach((doc) => {
+      const questionData = doc.data();
+      questions.push({
+        id: doc.id,
+        question: questionData.question,
+        options: questionData.options,
+        correctAnswer: questionData.correctAnswer,
+        imageUrl: questionData.imageUrl || null,
+        order: questionData.order
+      });
+    });
+
+    // Return the questions
+    res.status(200).json({ questions });
+  } catch (error) {
+    console.error("Error fetching questions:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// API to save exam date and time for practice tests
+app.post("/api/practice-tests/:category/:examId/date-time", async (req, res) => {
+  const { category, examId } = req.params;
+  const { date, startTime, endTime, marks, price } = req.body;
+
+  try {
+    // Validate input
+    if (!category || !examId || !date || !startTime || !endTime || marks === undefined || price === undefined) {
+      return res.status(400).json({
+        error: "Missing required fields. Please provide date, startTime, endTime, marks, and price."
+      });
+    }
+
+    // Validate 12-hour time format with AM/PM
+    const timeRegex = /^(0?[1-9]|1[0-2]):[0-5][0-9]\s?(AM|PM)$/i;
+    if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
+      return res.status(400).json({
+        error: "Invalid time format. Please provide time in 12-hour format (e.g., 1:45 PM)."
+      });
+    }
+
+    // Store data in both Realtime Database and Firestore
+    const dateTimeData = {
+      date,
+      startTime,
+      endTime,
+      marks,
+      price,
+      updatedAt: firebaseAdmin.database.ServerValue.TIMESTAMP
+    };
+
+    // Reference to the exam date-time in Realtime Database
+    const examDateTimeRef = firebaseAdmin.database()
+      .ref(`PracticeTestDateTime/${category}/${examId}`);
+
+    // Reference to the exam in Firestore
+    const examRef = firestore.collection("PracticeTests").doc(category)
+      .collection("Exams").doc(examId);
+
+    // Save to Realtime Database
+    await examDateTimeRef.set(dateTimeData);
+
+    // Update Firestore document
+    await examRef.set({
+      dateTime: {
+        date,
+        startTime,
+        endTime,
+        marks,
+        price,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }
+    }, { merge: true });
+
+    res.status(200).json({
+      message: "Practice test details saved successfully",
+      data: {
+        category,
+        examId,
+        date,
+        startTime,
+        endTime,
+        marks,
+        price
+      }
+    });
+  } catch (error) {
+    console.error("Error saving practice test details:", error);
+    res.status(500).json({
+      error: "Failed to save practice test details",
+      details: error.message
+    });
+  }
+});
+
+// API to get exam date and time for practice tests
+app.get("/api/practice-tests/:category/:examId/date-time", async (req, res) => {
+  const { category, examId } = req.params;
+
+  try {
+    // Reference to the exam date-time in Realtime Database
+    const examDateTimeRef = firebaseAdmin.database()
+      .ref(`PracticeTestDateTime/${category}/${examId}`);
+    
+    // Get the data
+    const snapshot = await examDateTimeRef.once('value');
+    const dateTimeData = snapshot.val();
+
+    if (!dateTimeData) {
+      return res.status(404).json({ 
+        error: "Practice test date and time not found" 
+      });
+    }
+
+    res.status(200).json({
+      category,
+      examId,
+      ...dateTimeData
+    });
+  } catch (error) {
+    console.error("Error fetching practice test date and time:", error);
+    res.status(500).json({ 
+      error: "Failed to fetch practice test date and time",
+      details: error.message 
+    });
+  }
+});
+
+
+//Api Students who purchased exams
+// GET API to fetch all students data
+app.get("/get-all-students", async (req, res) => {
+  try {
+    const studentsRef = realtimeDatabase.ref("practicetestpurchasedstudents"); // Collection reference
+    const snapshot = await studentsRef.once("value"); // Fetch all data
+
+    if (!snapshot.exists()) {
+      return res.status(404).json({ message: "No students found" });
+    }
+
+    return res.status(200).json(snapshot.val()); // Return all student data
+  } catch (error) {
+    console.error("Error fetching data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+
+//Pdf syallbus realted apis
+
+//Pdf syllabus category apis
+// Create PDF syllabus category
+
+// Reference to categories in realtime database
+const pdfsyllabuscategoryRef = realtimeDatabase.ref('pdfsyllabuscategoryRef');
+app.post("/api/pdfsyllabuscategories", async (req, res) => {
+  try {
+    const { name } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: "Category name is required" });
+    }
+    
+    const newPdfSyllabusCategoryRef = pdfsyllabuscategoryRef.push();
+    await newPdfSyllabusCategoryRef.set({
+      name,
+      createdAt: admin.database.ServerValue.TIMESTAMP
+    });
+    
+    res.status(201).json({
+      id: newPdfSyllabusCategoryRef.key,
+      name
+    });
+  } catch (error) {
+    console.error("Error creating PDF syllabus category:", error);
+    res.status(500).json({ error: "Failed to create PDF syllabus category" });
+  }
+});
+
+// Get all PDF syllabus categories
+app.get("/api/pdfsyllabuscategories", async (req, res) => {
+  try {
+    const snapshot = await pdfsyllabuscategoryRef.once('value');
+    const pdfsyllabuscategories = [];
+    
+    snapshot.forEach((childSnapshot) => {
+      pdfsyllabuscategories.push({
+        id: childSnapshot.key,
+        ...childSnapshot.val()
+      });
+    });
+    
+    res.json(pdfsyllabuscategories);
+  } catch (error) {
+    console.error("Error fetching PDF syllabus categories:", error);
+    res.status(500).json({ error: "Failed to fetch PDF syllabus categories" });
+  }
+});
+
+// Update PDF syllabus category
+app.put("/api/pdfsyllabuscategories/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: "Category name is required" });
+    }
+    
+    const pdfsyllabusCategoryRef = pdfsyllabuscategoryRef.child(id);
+    await pdfsyllabusCategoryRef.update({
+      name,
+      updatedAt: admin.database.ServerValue.TIMESTAMP
+    });
+    
+    res.json({ id, name });
+  } catch (error) {
+    console.error("Error updating PDF syllabus category:", error);
+    res.status(500).json({ error: "Failed to update PDF syllabus category" });
+  }
+});
+
+// Delete PDF syllabus category
+app.delete("/api/pdfsyllabuscategories/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    await pdfsyllabuscategoryRef.child(id).remove();
+    res.json({ message: "PDF syllabus category deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting PDF syllabus category:", error);
+    res.status(500).json({ error: "Failed to delete PDF syllabus category" });
+  }
+});
+
+
+
+//Pdf Sylabus details
+
+// PDF Syllabus API Endpoints
+
+// Firestore setup references
+const pdfSyllabusRef = realtimeDatabase.ref('pdfsyllabi');
+
+// Utility function to sanitize filename for storage
+const sanitizeFilename = (filename) => {
+  return filename
+    .replace(/[^a-zA-Z0-9.-]/g, '_') // Replace non-alphanumeric chars with underscore
+    .replace(/_{2,}/g, '_');         // Replace multiple underscore with single one
+};
+
+// Create or update PDF syllabus
+// Use pdfUpload.single for the PDF file upload route
+app.post("/api/pdf-syllabi", pdfUpload.single('pdfFile'), async (req, res) => {
+  try {
+    // After Multer processes the file, it will be available as req.file
+    if (!req.file) {
+      return res.status(400).json({ error: "PDF file is required" });
+    }
+    
+    const { category, title, fees, duration } = req.body;
+    
+    if (!category || !title) {
+      return res.status(400).json({ error: "Category and title are required" });
+    }
+    
+    // The file data is now in req.file
+    const pdfFile = req.file;
+    const timestamp = Date.now();
+    const sanitizedTitle = sanitizeFilename(title);
+    const sanitizedCategory = sanitizeFilename(category);
+    
+    // Create a unique file path in Firebase Storage
+    const filePath = `pdfsyllabi/${sanitizedCategory}/${sanitizedTitle}_${timestamp}.pdf`;
+    
+    // Upload file to Firebase Storage
+    const fileBuffer = pdfFile.buffer; // With Multer, file data is in the buffer property
+    const file = bucket.file(filePath);
+    
+    await file.save(fileBuffer, {
+      metadata: {
+        contentType: 'application/pdf',
+        metadata: {
+          originalName: pdfFile.originalname, // With Multer, the file name is in originalname property
+          category,
+          title
+        }
+      }
+    });
+    
+    // Get the public URL of the file
+    const [url] = await file.getSignedUrl({
+      action: 'read',
+      expires: '03-01-2500' // Long expiration date
+    });
+    
+    // Create syllabus entry in Realtime Database
+    const syllabusData = {
+      title,
+      category,
+      fees: parseFloat(fees) || 0,
+      duration: duration ? `${duration} days` : "N/A",
+      filePath,
+      fileUrl: url,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    
+    const syllabusKey = `${sanitizedCategory}/${sanitizedTitle}`;
+    await pdfSyllabusRef.child(syllabusKey).set(syllabusData);
+    
+    res.status(201).json({
+      message: "PDF syllabus created successfully",
+      data: {
+        id: syllabusKey,
+        ...syllabusData
+      }
+    });
+  } catch (error) {
+    console.error("Error creating PDF syllabus:", error);
+    res.status(500).json({ error: "Failed to create PDF syllabus" });
+  }
+});
+
+// Update PDF syllabus
+app.put("/api/pdf-syllabi/:category/:title", async (req, res) => {
+  try {
+    const { category, title } = req.params;
+    const { newCategory, newTitle, fees, duration } = req.body;
+    
+    if (!newCategory || !newTitle) {
+      return res.status(400).json({ error: "Category and title are required" });
+    }
+    
+    const sanitizedOldCategory = sanitizeFilename(category);
+    const sanitizedOldTitle = sanitizeFilename(title);
+    const oldSyllabusKey = `${sanitizedOldCategory}/${sanitizedOldTitle}`;
+    
+    // Check if syllabus exists
+    const syllabusSnapshot = await pdfSyllabusRef.child(oldSyllabusKey).once('value');
+    const syllabusData = syllabusSnapshot.val();
+    
+    if (!syllabusData) {
+      return res.status(404).json({ error: "PDF syllabus not found" });
+    }
+    
+    // Update metadata
+    const updatedData = {
+      ...syllabusData,
+      title: newTitle,
+      category: newCategory,
+      fees: parseFloat(fees) || 0,
+      duration: duration ? `${duration} days` : "N/A",
+      updatedAt: Date.now()
+    };
+    
+    // If category or title changed, we need to create a new entry and delete the old one
+    if (category !== newCategory || title !== newTitle) {
+      const sanitizedNewCategory = sanitizeFilename(newCategory);
+      const sanitizedNewTitle = sanitizeFilename(newTitle);
+      const newSyllabusKey = `${sanitizedNewCategory}/${sanitizedNewTitle}`;
+      
+      // Create new entry with updated data
+      await pdfSyllabusRef.child(newSyllabusKey).set(updatedData);
+      
+      // Delete old entry
+      await pdfSyllabusRef.child(oldSyllabusKey).remove();
+      
+      res.json({
+        message: "PDF syllabus updated successfully",
+        data: {
+          id: newSyllabusKey,
+          ...updatedData
+        }
+      });
+    } else {
+      // Update existing entry
+      await pdfSyllabusRef.child(oldSyllabusKey).update(updatedData);
+      
+      res.json({
+        message: "PDF syllabus updated successfully",
+        data: {
+          id: oldSyllabusKey,
+          ...updatedData
+        }
+      });
+    }
+    
+  } catch (error) {
+    console.error("Error updating PDF syllabus:", error);
+    res.status(500).json({ error: "Failed to update PDF syllabus" });
+  }
+});
+
+// Replace PDF file for existing syllabus
+app.put("/api/pdf-syllabi/:category/:title/file", async (req, res) => {
+  try {
+    if (!req.files || !req.files.pdfFile) {
+      return res.status(400).json({ error: "PDF file is required" });
+    }
+    
+    const { category, title } = req.params;
+    const pdfFile = req.files.pdfFile;
+    
+    const sanitizedCategory = sanitizeFilename(category);
+    const sanitizedTitle = sanitizeFilename(title);
+    const syllabusKey = `${sanitizedCategory}/${sanitizedTitle}`;
+    
+    // Check if syllabus exists
+    const syllabusSnapshot = await pdfSyllabusRef.child(syllabusKey).once('value');
+    const syllabusData = syllabusSnapshot.val();
+    
+    if (!syllabusData) {
+      return res.status(404).json({ error: "PDF syllabus not found" });
+    }
+    
+    // Delete old file from storage if it exists
+    if (syllabusData.filePath) {
+      try {
+        await bucket.file(syllabusData.filePath).delete();
+      } catch (deleteError) {
+        console.warn("Failed to delete old file, it might not exist:", deleteError);
+      }
+    }
+    
+    // Upload new file to Firebase Storage
+    const timestamp = Date.now();
+    const filePath = `pdfsyllabi/${sanitizedCategory}/${sanitizedTitle}_${timestamp}.pdf`;
+    const fileBuffer = Buffer.from(pdfFile.data);
+    const file = bucket.file(filePath);
+    
+    await file.save(fileBuffer, {
+      metadata: {
+        contentType: 'application/pdf',
+        metadata: {
+          originalName: pdfFile.name,
+          category,
+          title
+        }
+      }
+    });
+    
+    // Get the public URL of the file
+    const [url] = await file.getSignedUrl({
+      action: 'read',
+      expires: '03-01-2500' // Long expiration date
+    });
+    
+    // Update syllabus data with new file info
+    const updatedData = {
+      ...syllabusData,
+      filePath,
+      fileUrl: url,
+      updatedAt: timestamp
+    };
+    
+    await pdfSyllabusRef.child(syllabusKey).update(updatedData);
+    
+    res.json({
+      message: "PDF file updated successfully",
+      data: {
+        id: syllabusKey,
+        ...updatedData
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error updating PDF file:", error);
+    res.status(500).json({ error: "Failed to update PDF file" });
+  }
+});
+
+// Get all PDF syllabi
+app.get("/api/pdf-syllabi", async (req, res) => {
+  try {
+    const snapshot = await pdfSyllabusRef.once('value');
+    const syllabi = {};
+    
+    snapshot.forEach((categorySnapshot) => {
+      categorySnapshot.forEach((syllabusSnapshot) => {
+        const syllabusData = syllabusSnapshot.val();
+        const category = syllabusData.category;
+        
+        if (!syllabi[category]) {
+          syllabi[category] = {};
+        }
+        
+        syllabi[category][syllabusData.title] = syllabusData;
+      });
+    });
+    
+    res.json(syllabi);
+  } catch (error) {
+    console.error("Error fetching PDF syllabi:", error);
+    res.status(500).json({ error: "Failed to fetch PDF syllabi" });
+  }
+});
+
+// Get PDF syllabi by category
+app.get("/api/pdf-syllabi/category/:category", async (req, res) => {
+  try {
+    const { category } = req.params;
+    const sanitizedCategory = sanitizeFilename(category);
+    
+    const snapshot = await pdfSyllabusRef.child(sanitizedCategory).once('value');
+    const syllabi = {};
+    
+    snapshot.forEach((syllabusSnapshot) => {
+      const syllabusData = syllabusSnapshot.val();
+      syllabi[syllabusData.title] = syllabusData;
+    });
+    
+    res.json(syllabi);
+  } catch (error) {
+    console.error("Error fetching PDF syllabi by category:", error);
+    res.status(500).json({ error: "Failed to fetch PDF syllabi by category" });
+  }
+});
+
+// Delete PDF syllabus
+app.delete("/api/pdf-syllabi/:category/:title", async (req, res) => {
+  try {
+    const { category, title } = req.params;
+    
+    const sanitizedCategory = sanitizeFilename(category);
+    const sanitizedTitle = sanitizeFilename(title);
+    const syllabusKey = `${sanitizedCategory}/${sanitizedTitle}`;
+    
+    // Check if syllabus exists
+    const syllabusSnapshot = await pdfSyllabusRef.child(syllabusKey).once('value');
+    const syllabusData = syllabusSnapshot.val();
+    
+    if (!syllabusData) {
+      return res.status(404).json({ error: "PDF syllabus not found" });
+    }
+    
+    // Delete file from storage if it exists
+    if (syllabusData.filePath) {
+      try {
+        await bucket.file(syllabusData.filePath).delete();
+      } catch (deleteError) {
+        console.warn("Failed to delete file, it might not exist:", deleteError);
+      }
+    }
+    
+    // Delete syllabus from Realtime Database
+    await pdfSyllabusRef.child(syllabusKey).remove();
+    
+    res.json({ message: "PDF syllabus deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting PDF syllabus:", error);
+    res.status(500).json({ error: "Failed to delete PDF syllabus" });
+  }
+});
+
+
+
+//Api for pdf syllabus purchasers
+
+// API to get all PDF syllabus purchasers
+app.get('/get-pdf-syllabus-purchasers', async (req, res) => {
+  try {
+    // Get data from Firebase Realtime Database
+    const purchasersRef = realtimeDatabase.ref('pdfsyllabuspurchasers');
+    const snapshot = await purchasersRef.once('value');
+    const purchasersData = snapshot.val();
+    
+    if (!purchasersData) {
+      return res.status(200).json({});
+    }
+
+    return res.status(200).json(purchasersData);
+  } catch (error) {
+    console.error('Error fetching PDF syllabus purchasers:', error);
+    return res.status(500).json({ error: 'Failed to fetch PDF syllabus purchasers' });
+  }
+});
+
 
 
 
