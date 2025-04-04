@@ -1690,10 +1690,11 @@ app.get("/api/practice-tests/:category/:examId/date-time", async (req, res) => {
 //Api Students who purchased exams
 // GET API to fetch all students data
 app.get("/get-all-students", async (req, res) => {
-  // Add CORS headers with wildcard to allow all origins
-  res.header("Access-Control-Allow-Origin", "*"); // Allow all origins
-  res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+  // Add comprehensive CORS headers
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
   res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
   
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
